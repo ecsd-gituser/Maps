@@ -1,12 +1,8 @@
-const data = [
-    // Other school data
-    { name: "School A", POINT: { coordinates: [-122.414, 37.7749] } },
-    { name: "School B", POINT: { coordinates: [-122.438, 37.7749] } },
-    // Fixing trailing spaces in names
-    { name: "First Example School", POINT: { coordinates: [-104.999999, 39.7392] } },
-    { name: "Second Example School", POINT: { coordinates: [-104.999999, 39.7392] } },
-    { name: "Homestake Peak Middle School", POINT: { coordinates: [-104.9998, 39.7395] } }, // Updated name
-    // More school data
+// Example of corrected school data
+const schoolData = [
+    { name: "Homestake Peak MS (6-8)", location: [ -105.3369, 39.5706 ] },
+    { name: "Another School", location: [ -105.3343, 39.5789 ] },
+    // Add other schools here, correcting their names and coordinates
 ];
 
-// Additional functions or objects...
+export default schoolData;
