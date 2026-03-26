@@ -79,8 +79,22 @@
 <script src="data.js"></script>
 
 <script>
+// ================= COLORADO BOUNDS =================
+const coloradoBounds = [
+  [36.99, -109.06],
+  [41.00, -102.04]
+];
+
 // ================= MAP =================
-const map = L.map('map').setView([39.0, -105.5], 7);
+const map = L.map('map', {
+  maxBounds: coloradoBounds,
+  maxBoundsViscosity: 1.0,
+  minZoom: 7,
+  maxZoom: 18
+});
+
+// 👉 Start focused on Eagle, Colorado
+map.setView([39.655, -106.828], 11);
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   subdomains:'abcd'
@@ -140,13 +154,30 @@ ZONES.forEach(zone => {
   }).addTo(map);
 });
 
+// 👉 AUTO-ZOOM TO YOUR ZONES (better than whole state)
+const zoneGroup = L.featureGroup(
+  ZONES.map(z => z.layer).filter(Boolean)
+);
+
+if (zoneGroup.getLayers().length) {
+  map.fitBounds(zoneGroup.getBounds());
+}
+
 // ================= CLEANUP =================
 function clearMarkers() {
   if(userMarker) map.removeLayer(userMarker);
+
   locationMarkers.forEach(m => map.removeLayer(m));
   locationMarkers = [];
+
   highlightedZones.forEach(z => z.setStyle({color:'blue', fillOpacity:0.05}));
   highlightedZones = [];
+}
+
+// ================= COLORADO CHECK =================
+function isInColorado(lat, lon){
+  return lat >= 36.99 && lat <= 41.00 &&
+         lon >= -109.06 && lon <= -102.04;
 }
 
 // ================= AUTOCOMPLETE =================
@@ -163,7 +194,7 @@ input.addEventListener("keyup", () => {
     if(!q) return suggestionsDiv.innerHTML="";
 
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=us&viewbox=-109.06,41.00,-102.04,36.99&bounded=1`
     );
 
     const data = await res.json();
@@ -195,6 +226,10 @@ function useSelectedSuggestion(){
 
   const lat = +selectedSuggestion.lat;
   const lon = +selectedSuggestion.lon;
+
+  if(!isInColorado(lat, lon)){
+    return alert("Please select an address inside Colorado.");
+  }
 
   runSearch(lat, lon);
 }
@@ -279,7 +314,6 @@ function confirmLocation(){
     const m = L.marker([lat2, lon2]).addTo(map);
     locationMarkers.push(m);
 
-    // Add Google Maps directions link
     resultDiv.innerHTML += `
       <div class="location-card">
         <b>${z.location.name}</b><br>
@@ -293,8 +327,9 @@ function confirmLocation(){
     `;
   });
 
-  // Fit map to markers
-  if(locationMarkers.length) map.fitBounds(locationMarkers.map(m => m.getLatLng()));
+  if(locationMarkers.length) {
+    map.fitBounds(locationMarkers.map(m => m.getLatLng()));
+  }
 }
 </script>
 
