@@ -5,13 +5,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
   <style>
-    body {
-      font-family: Arial;
-      margin:0;
-      padding:0;
-      display:flex;
-      height:100vh;
-    }
+    body { font-family: Arial; margin:0; padding:0; display:flex; height:100vh; }
 
     #sidebar {
       width: 320px;
@@ -20,13 +14,10 @@
       border-right:1px solid #aaa;
       background:#f4f6f8;
       box-shadow: 2px 0px 5px rgba(0,0,0,0.1);
-      position: relative; /* ✅ FIXED */
+      position: relative;
     }
 
-    #map {
-      flex:1;
-      border-left:1px solid #ccc;
-    }
+    #map { flex:1; }
 
     input {
       width: 90%;
@@ -45,9 +36,7 @@
       cursor:pointer;
     }
 
-    button:hover {
-      background:#0056b3;
-    }
+    button:hover { background:#0056b3; }
 
     .location-card {
       margin-bottom:12px;
@@ -68,16 +57,8 @@
       border-radius:4px;
     }
 
-    .suggestion-item {
-      padding:5px;
-      cursor:pointer;
-    }
-
-    .suggestion-item:hover,
-    .suggestion-active {
-      background:#007bff;
-      color:#fff;
-    }
+    .suggestion-item { padding:5px; cursor:pointer; }
+    .suggestion-item:hover { background:#007bff; color:#fff; }
   </style>
 </head>
 
@@ -98,23 +79,20 @@
 <script src="data.js"></script>
 
 <script>
-// ==========================
-// MAP SETUP
-// ==========================
+// ================= MAP =================
 const map = L.map('map').setView([39.0, -105.5], 7);
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  subdomains:'abcd',
-  attribution: '&copy; OpenStreetMap & CARTO'
+  subdomains:'abcd'
 }).addTo(map);
 
 let userMarker;
 let locationMarkers = [];
 let highlightedZones = [];
+let currentLat = null;
+let currentLon = null;
 
-// ==========================
-// SAFE WKT PARSERS
-// ==========================
+// ================= PARSERS =================
 function parsePoint(wkt) {
   const match = wkt.match(/\(([^)]+)\)/);
   if (!match) return null;
@@ -134,200 +112,189 @@ function parsePolygon(wkt) {
 
   let coords = match[1]
     .split(",")
-    .map(pair => pair.trim().split(/[ ]+/).map(Number));
+    .map(p => p.trim().split(" ").map(Number));
 
   coords = coords.map(([a, b]) => {
-    if (Math.abs(a) <= 90 && Math.abs(b) > 90) {
-      return [b, a];
-    }
+    if (Math.abs(a) <= 90 && Math.abs(b) > 90) return [b, a];
     return [a, b];
   });
 
-  const first = coords[0];
-  const last = coords[coords.length - 1];
-  if (first[0] !== last[0] || first[1] !== last[1]) {
-    coords.push(first);
+  if (coords[0][0] !== coords.at(-1)[0] || coords[0][1] !== coords.at(-1)[1]) {
+    coords.push(coords[0]);
   }
 
   return turf.polygon([coords]);
 }
 
-// ==========================
-// DRAW ZONES
-// ==========================
+// ================= DRAW ZONES =================
 ZONES.forEach(zone => {
   const poly = parsePolygon(zone.polygon);
   if (!poly) return;
 
   zone.polygonObj = poly;
 
-  const layer = L.geoJSON(poly, {
-    color: 'blue',
-    weight: 2,
-    fillOpacity: 0.05
+  zone.layer = L.geoJSON(poly, {
+    color:'blue',
+    weight:2,
+    fillOpacity:0.05
   }).addTo(map);
-
-  zone.layer = layer;
 });
 
-// ==========================
-// CLEANUP
-// ==========================
+// ================= CLEANUP =================
 function clearMarkers() {
   if(userMarker) map.removeLayer(userMarker);
-
   locationMarkers.forEach(m => map.removeLayer(m));
   locationMarkers = [];
-
-  highlightedZones.forEach(h => h.setStyle({color:'blue', fillOpacity:0.05}));
+  highlightedZones.forEach(z => z.setStyle({color:'blue', fillOpacity:0.05}));
   highlightedZones = [];
 }
 
-// ==========================
-// AUTOCOMPLETE (FIXED)
-// ==========================
-const addressInput = document.getElementById("address");
+// ================= AUTOCOMPLETE =================
+const input = document.getElementById("address");
 const suggestionsDiv = document.getElementById("suggestions");
-
 let selectedSuggestion = null;
-let debounceTimer;
+let debounce;
 
-addressInput.addEventListener("keyup", function() {
-  clearTimeout(debounceTimer);
+input.addEventListener("keyup", () => {
+  clearTimeout(debounce);
 
-  debounceTimer = setTimeout(async () => {
-    const query = addressInput.value.trim();
-    if(!query) {
-      suggestionsDiv.innerHTML="";
-      return;
-    }
+  debounce = setTimeout(async () => {
+    const q = input.value.trim();
+    if(!q) return suggestionsDiv.innerHTML="";
 
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`,
-        { headers: { "Accept": "application/json" } }
-      );
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5`
+    );
 
-      const data = await res.json();
-      console.log("Geocode results:", data);
+    const data = await res.json();
+    suggestionsDiv.innerHTML = "";
 
-      suggestionsDiv.innerHTML = "";
+    data.forEach(item => {
+      const div = document.createElement("div");
+      div.className="suggestion-item";
+      div.innerText = item.display_name;
 
-      data.forEach(item => {
-        const div = document.createElement("div");
-        div.className="suggestion-item";
-        div.innerText = item.display_name;
+      div.onclick = () => {
+        input.value = item.display_name;
+        selectedSuggestion = item;
+        suggestionsDiv.innerHTML="";
+      };
 
-        div.onclick = () => {
-          addressInput.value = item.display_name;
-          selectedSuggestion = item;
-          suggestionsDiv.innerHTML = "";
-        };
-
-        suggestionsDiv.appendChild(div);
-      });
-
-    } catch (err) {
-      console.error("Geocoding error:", err);
-    }
-
+      suggestionsDiv.appendChild(div);
+    });
   }, 300);
 });
 
-// Hide dropdown
-document.addEventListener("click", function(e){
-  if(!addressInput.contains(e.target) && !suggestionsDiv.contains(e.target)){
-    suggestionsDiv.innerHTML="";
-  }
-});
-
-// ==========================
-// SEARCH BUTTON
-// ==========================
+// ================= SEARCH =================
 function useSelectedSuggestion(){
   if(!selectedSuggestion){
-    const first = suggestionsDiv.querySelector(".suggestion-item");
-    if(first){
-      first.click();
-    } else {
-      alert("No valid address found.");
-      return;
-    }
+    const first = document.querySelector(".suggestion-item");
+    if(first) first.click();
+    else return alert("No address found");
   }
 
-  const lat = parseFloat(selectedSuggestion.lat);
-  const lon = parseFloat(selectedSuggestion.lon);
+  const lat = +selectedSuggestion.lat;
+  const lon = +selectedSuggestion.lon;
 
   runSearch(lat, lon);
 }
 
-// ==========================
-// MAIN SEARCH
-// ==========================
-function runSearch(lat, lon){
-  clearMarkers();
+// ================= ZONE CHECK =================
+function checkZones(lat, lon){
+  const pt = turf.point([lon, lat]);
+  let matches = [];
 
-  const userPoint = turf.point([lon, lat]);
+  ZONES.forEach(z => {
+    if(!z.polygonObj) return;
 
-  userMarker = L.marker([lat, lon])
-    .addTo(map)
-    .bindPopup("You are here")
-    .openPopup();
-
-  let matchedZones = [];
-
-  ZONES.forEach(zone => {
-    if (!zone.polygonObj) return;
-
-    if(turf.booleanPointInPolygon(userPoint, zone.polygonObj)){
-      matchedZones.push(zone);
-
-      zone.layer.setStyle({
-        color:'green',
-        fillOpacity:0.2
-      });
-
-      highlightedZones.push(zone.layer);
+    if(turf.booleanPointInPolygon(pt, z.polygonObj)){
+      matches.push(z);
+      z.layer.setStyle({color:'green', fillOpacity:0.2});
+      highlightedZones.push(z.layer);
     }
   });
 
-  const resultDiv = document.getElementById("result");
-  resultDiv.innerHTML = "";
+  return matches;
+}
 
-  if(matchedZones.length === 0){
-    resultDiv.innerText = "❌ No matching zones found";
-    map.setView([lat, lon], 10);
+// ================= MAIN =================
+function runSearch(lat, lon){
+  clearMarkers();
+
+  currentLat = lat;
+  currentLon = lon;
+
+  userMarker = L.marker([lat, lon], { draggable:true }).addTo(map);
+
+  userMarker.on("dragend", () => {
+    const pos = userMarker.getLatLng();
+    currentLat = pos.lat;
+    currentLon = pos.lng;
+  });
+
+  map.setView([lat, lon], 15);
+
+  const resultDiv = document.getElementById("result");
+
+  resultDiv.innerHTML = `
+    <div style="background:#fff;padding:10px;border-radius:6px;margin-bottom:10px;">
+      <b>Check placement of the house icon.</b><br>
+      Zoom in if needed.<br><br>
+
+      <button onclick="confirmLocation()">Check this location</button>
+      <button onclick="location.reload()" style="background:#6c757d;margin-left:5px;">Try Again</button>
+
+      <p style="font-size:13px;margin-top:8px;">
+        Drag the house icon if needed.
+      </p>
+    </div>
+  `;
+}
+
+// ================= CONFIRM =================
+function confirmLocation(){
+  clearMarkers();
+
+  const lat = currentLat;
+  const lon = currentLon;
+
+  userMarker = L.marker([lat, lon], { draggable:true }).addTo(map);
+
+  const matches = checkZones(lat, lon);
+  const resultDiv = document.getElementById("result");
+
+  if(matches.length === 0){
+    resultDiv.innerHTML += "<p>❌ No matching zones found</p>";
     return;
   }
 
-  resultDiv.innerHTML = `<p>✅ Found ${matchedZones.length} matching zone(s)</p>`;
+  resultDiv.innerHTML += `<p>✅ Found ${matches.length} zone(s)</p>`;
 
-  matchedZones.forEach(zone => {
-    const loc = zone.location;
-    const pt = parsePoint(loc.point);
-    if (!pt) return;
+  matches.forEach(z => {
+    const pt = parsePoint(z.location.point);
+    if(!pt) return;
 
     const [lon2, lat2] = pt.geometry.coordinates;
 
-    const marker = L.marker([lat2, lon2]).addTo(map);
-    marker.bindPopup(`<b>${loc.name}</b><br>${loc.address}`);
-    locationMarkers.push(marker);
+    const m = L.marker([lat2, lon2]).addTo(map);
+    locationMarkers.push(m);
 
-    const div = document.createElement("div");
-    div.className = "location-card";
-    div.innerHTML = `
-      <b>${loc.name}</b><br>
-      ${loc.address}<br>
-      Grades Served: ${loc.grades}<br>
-      Zone: ${zone.name}<br>
-      <a href="https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${lat2},${lon2}" target="_blank">
-        Get Directions
-      </a>
+    // Add Google Maps directions link
+    resultDiv.innerHTML += `
+      <div class="location-card">
+        <b>${z.location.name}</b><br>
+        ${z.location.address}<br>
+        Grades: ${z.location.grades}<br>
+        Zone: ${z.name}<br>
+        <a href="https://www.google.com/maps/dir/?api=1&origin=${lat},${lon}&destination=${lat2},${lon2}" target="_blank">
+          Get Directions
+        </a>
+      </div>
     `;
-    resultDiv.appendChild(div);
   });
 
-  map.fitBounds(locationMarkers.map(m=>m.getLatLng()));
+  // Fit map to markers
+  if(locationMarkers.length) map.fitBounds(locationMarkers.map(m => m.getLatLng()));
 }
 </script>
 
